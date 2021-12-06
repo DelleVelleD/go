@@ -11,6 +11,7 @@ capturing pieces
 //// includes ////
 #include "deshi.h"
 #include "core/logging.h"
+#include "utils/array_sorting.h"
 
 //// structurs ////
 enum{
@@ -44,15 +45,75 @@ b32 black_turn = true;
 
 //// functions ////
 #define Slot(row,col) board.slots[(board.size*(row))+(col)]
+#define SlotLinear(pos) board.slots[pos]
 #define SlotIsEmpty(row,col) Slot(row,col) == Slot_Empty
 #define SlotIsWhite(row,col) Slot(row,col) == Slot_White
 #define SlotIsBlack(row,col) Slot(row,col) == Slot_Black
+
+void FillChain(array<u32>& chain, u32 row, u32 col){
+	u32 start = (board.size*row)+col;
+	u32 color = board.slots[start];
+	if(color == Slot_Empty) return;
+	chain.add(start);
+	
+	if(col > 0){            //UP
+		u32 cell = (board.size*(row))+(col-1);
+		if(board.slots[cell] == color){
+			b32 already = false;
+			forI(chain.count){ if(cell == chain[i]){ already = true; break; } }
+			if(!already){ FillChain(chain, row, col-1); }
+		}
+	}
+	if(col < board.size-1){ //DOWN
+		u32 cell = (board.size*(row))+(col+1);
+		if(board.slots[cell] == color){
+			b32 already = false;
+			forI(chain.count){ if(cell == chain[i]){ already = true; break; } }
+			if(!already){ FillChain(chain, row, col+1); }
+		}
+	}
+	if(row > 0){            //LEFT
+		u32 cell = (board.size*(row-1))+(col);
+		if(board.slots[cell] == color){
+			b32 already = false;
+			forI(chain.count){ if(cell == chain[i]){ already = true; break; } }
+			if(!already){ FillChain(chain, row-1, col); }
+		}
+	}
+	if(row < board.size-1){ //RIGHT
+		u32 cell = (board.size*(row+1))+(col);
+		if(board.slots[cell] == color){
+			b32 already = false;
+			forI(chain.count){ if(cell == chain[i]){ already = true; break; } }
+			if(!already){ FillChain(chain, row+1, col); }
+		}
+	}
+}
+
+b32 HasLiberty(u32 pos){
+	u32 row = pos / board.size;
+	u32 col = pos % board.size;
+	if(row > 0 && SlotIsEmpty(row-1,col)) return true;
+	if(col > 0 && SlotIsEmpty(row,col-1)) return true;
+	if(row < board.size-1 && SlotIsEmpty(row+1,col)) return true;
+	if(col < board.size-1 && SlotIsEmpty(row,col+1)) return true;
+	return false;
+}
 
 b32 HasLiberty(u32 row, u32 col){
 	if(row > 0 && SlotIsEmpty(row-1,col)) return true;
 	if(col > 0 && SlotIsEmpty(row,col-1)) return true;
 	if(row < board.size-1 && SlotIsEmpty(row+1,col)) return true;
 	if(col < board.size-1 && SlotIsEmpty(row,col+1)) return true;
+	return false;
+}
+
+b32 ChainHasLiberty(array<u32>& chain){
+	forI(chain.count){
+		if(HasLiberty(chain[i])){ 
+			return true;
+		}
+	}
 	return false;
 }
 
@@ -136,30 +197,34 @@ void UpdateBoard(){
 	UI::RectFilled(board.pos-border, board.dims+(2*border), color(220,179,92));
 	
 	//grid and border text
-	UI::PushVar(UIStyleVar_FontHeight, row_gap/2); UI::PushFont(font);
+	UI::PushVar(UIStyleVar_FontHeight, row_gap/2); UI::PushFont(font); UI::PushColor(UIStyleCol_Text, Color_Black);
 	forI(board.size){
 		f32 offset = i*row_gap;
 		UI::Line(board.pos+vec2{offset,0}, board.pos+vec2{offset,board.dims.x}, 1, Color_Black);
 		UI::Line(board.pos+vec2{0,offset}, board.pos+vec2{board.dims.x,offset}, 1, Color_Black);
-		UI::Text(board_letters[i], board.pos+vec2{offset-row_gap/6,-row_gap},               Color_Black);
-		UI::Text(board_letters[i], board.pos+vec2{offset-row_gap/6,board.dims.x+row_gap/2}, Color_Black);
-		UI::Text(board_numbers_spacing[board.size-i-1], board.pos+vec2{-row_gap,offset-row_gap/4},               Color_Black);
-		UI::Text(board_numbers_spacing[board.size-i-1], board.pos+vec2{board.dims.x+row_gap/2,offset-row_gap/4}, Color_Black);
+		UI::Text(board_letters[i], board.pos+vec2{offset-row_gap/6,-row_gap});
+		UI::Text(board_letters[i], board.pos+vec2{offset-row_gap/6,board.dims.x+row_gap/2});
+		UI::Text(board_numbers_spacing[board.size-i-1], board.pos+vec2{-row_gap,offset-row_gap/4});
+		UI::Text(board_numbers_spacing[board.size-i-1], board.pos+vec2{board.dims.x+row_gap/2,offset-row_gap/4});
 	}
-	UI::PopFont(); UI::PopVar();
+	UI::PopColor(); UI::PopFont(); UI::PopVar();
 	
 	//pieces
+	u32 hovered_row = -1, hovered_col = -1;
 	forX(col, board.size){
 		forX(row, board.size){
 			vec2 offset{row*row_gap,col*row_gap};
 			vec2 intersection = board.pos+offset;
 			if      (SlotIsWhite(row,col)){
 				UI::CircleFilled(intersection, piece_radius, 16, Color_White);
+				if(DeshInput->mousePos.distanceTo(board.pos+offset) <= piece_radius){ hovered_row = row; hovered_col = col; }
 			}else if(SlotIsBlack(row,col)){
 				UI::CircleFilled(intersection, piece_radius, 16, Color_Black);
+				if(DeshInput->mousePos.distanceTo(board.pos+offset) <= piece_radius){ hovered_row = row; hovered_col = col; }
 			}else if(SlotIsEmpty(row,col)){
 				if(DeshInput->mousePos.distanceTo(board.pos+offset) <= piece_radius){
 					UI::CircleFilled(intersection, piece_radius, 16, (black_turn) ? color(0,0,0,128) : color(255,255,255,128));
+					hovered_row = row; hovered_col = col;
 					if(IsValidPlacement(row,col)){
 						if(DeshInput->KeyPressed(MouseButton::LEFT)){
 							Slot(row,col) = (black_turn) ? Slot_Black : Slot_White;
@@ -174,6 +239,22 @@ void UpdateBoard(){
 			}
 		}
 	}
+	
+	//debug
+#if 1 //draw hovered chain
+	if(hovered_row != -1 && hovered_col != -1){
+		array<u32> chain; 
+		FillChain(chain, hovered_row, hovered_col);
+		bubble_sort_low_to_high(chain);
+		if(chain.count > 1){
+			for(int i=1; i < chain.count; i++){
+				vec2 prev = board.pos+vec2{(chain[i-1]/board.size)*row_gap,(chain[i-1]%board.size)*row_gap};
+				vec2 curr = board.pos+vec2{(chain[i  ]/board.size)*row_gap,(chain[i  ]%board.size)*row_gap};
+				UI::Line(prev, curr, 5, Color_Red);
+			}
+		}
+	}
+#endif
 }
 
 int main(){

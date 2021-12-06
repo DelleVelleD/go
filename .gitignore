@@ -1,4 +1,4 @@
-# suugu ignores
+# go ignores
 
 #extensions
 *.pdb
@@ -35,7 +35,7 @@ data/textures/
 #specific files
 imgui.ini
 TODOs.txt
-misc/suugu.vcxproj.user
+misc/go.vcxproj.user
 
 #delle specifics
 misc/shell.bat
