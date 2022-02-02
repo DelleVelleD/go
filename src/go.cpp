@@ -10,8 +10,8 @@ capturing pieces
 
 //// includes ////
 #include "deshi.h"
-#include "core/logging.h"
-#include "utils/array_sorting.h"
+#include "core/logger.h"
+#include "utils/array_utils.h"
 
 //// structurs ////
 enum{
@@ -258,32 +258,18 @@ void UpdateBoard(){
 }
 
 int main(){
-	//init
-	deshi::init();
-	Render::UseDefaultViewProjMatrix();
+	deshi_init();
 	
 	font = Storage::CreateFontFromFileTTF("STIXTwoMath-Regular.otf", 48).second;
 	f32 board_width = (DeshWindow->width < DeshWindow->height) ? DeshWindow->width/2 : DeshWindow->height/2;
 	SetupBoard((DeshWindow->dimensions-vec2{board_width,board_width})/2, board_width, 9);
 	
-	//update
-	TIMER_START(t_f);
-	while(!deshi::shouldClose()){
-		DeshiImGui::NewFrame();
-		DeshTime->Update();
-		DeshWindow->Update();
-		DeshInput->Update();
-		Console2::Update();
+	deshi_loop_start();{
 		
 		UI::Begin("go", vec2::ZERO, DeshWindow->dimensions, UIWindowFlags_NoInteract | UIWindowFlags_Invisible);
 		UpdateBoard();
 		UI::End();
 		
-		UI::Update();
-		Render::Update();
-		DeshTime->frameTime = TIMER_END(t_f); TIMER_RESET(t_f);
-	}
-	
-	//cleanup
-	deshi::cleanup();
+	}deshi_loop_end();
+	deshi_cleanup();
 }

@@ -33,7 +33,6 @@ REM  DESHI_SLOW:      slow code allowed (Assert, etc)
 REM  DESHI_INTERNAL:  build for developer only (Renderer debug, etc)
 REM  DESHI_VULKAN:    build for Vulkan
 REM  DESHI_OPENGL:    build for OpenGL
-REM  DESHI_OPENGL:    build for OpenGL
 REM  DESHI_DIRECTX12: build for DirectX12
 
 @set DEFINES_DEBUG=/D"DESHI_INTERNAL=1" /D"DESHI_SLOW=1" 
