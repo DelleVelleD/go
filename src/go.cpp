@@ -1,11 +1,7 @@
-/*
-
-TODO
-----
-placement is valid in suicide situation if it captures a threatening piece
-
-
-*/
+//TODO ko rule when only one stone is captured (and optional superko)
+//TODO passing turn
+//TODO game end
+//TODO komi = 6.5
 
 //// @includes ////
 #include "deshi.h"
@@ -20,8 +16,8 @@ enum{
 };
 
 struct Chain{ //TODO make this one array where negative numbers mean inner or outer
-	array<u32> inner;//(deshi_allocator); //index of slot with no liberties b/c of friendly neighbours (can be empty)
-	array<u32> outer;//(deshi_allocator); //index of slot with liberties (can't be empty)
+	array<u32> outer = array<u32>(deshi_allocator); //indexes of slots with liberties (can't be empty)
+	array<u32> inner = array<u32>(deshi_allocator); //indexes of slots with no liberties b/c of friendly neighbours (can be empty)
 };
 
 struct Board{
@@ -36,15 +32,19 @@ const char* board_letters[] = { "A", "B", "C", "D", "E", "F", "G", "H", "I", "J"
 const char* board_numbers[] = { "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", };
 const char* board_numbers_spacing[] = { " 1", " 2", " 3", " 4", " 5", " 6", " 7", " 8", " 9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", };
 Font* font;
+b32 suicide_is_illegal = true;
 
 Board board;
 b32 black_turn = true;
+b32 turn_passed = false;
 array<Chain> chains(deshi_allocator);
 array<u32>  chained(deshi_allocator);
 
 //// @functions ////
-#define Slot(row,col) board.slots[(board.size*(row))+(col)]
+#define ToLinear(row,col) ((board.size*(row))+(col))
 #define SlotLinear(pos) board.slots[pos]
+
+#define Slot(row,col) board.slots[ToLinear(row,col)]
 #define SlotIsColor(row,col,color) (Slot(row,col) == color)
 #define SlotIsEmpty(row,col) SlotIsColor(row,col,Slot_Empty)
 #define SlotIsWhite(row,col) SlotIsColor(row,col,Slot_White)
@@ -52,7 +52,7 @@ array<u32>  chained(deshi_allocator);
 
 //returns false if already chained or a different color
 b32 FillChain(Chain* chain, u32 row, u32 col, u32 color){
-	u32 pos = (board.size*row)+col;
+	u32 pos = ToLinear(row,col);
 	
 	//exit if not chainable
 	if(SlotLinear(pos) != color) return false;
@@ -78,48 +78,95 @@ b32 FillChain(Chain* chain, u32 row, u32 col, u32 color){
 	return true;
 }
 
-b32 HasLiberty(u32 row, u32 col){
-	if(row > 0 && SlotIsEmpty(row-1,col)) return true;
-	if(col > 0 && SlotIsEmpty(row,col-1)) return true;
-	if(row < board.size-1 && SlotIsEmpty(row+1,col)) return true;
-	if(col < board.size-1 && SlotIsEmpty(row,col+1)) return true;
-	return false;
+u32 LibertyCount(u32 row, u32 col){
+	u32 count = 0;
+	if(row > 0            && SlotIsEmpty(row-1,col)) count++;
+	if(col > 0            && SlotIsEmpty(row,col-1)) count++;
+	if(row < board.size-1 && SlotIsEmpty(row+1,col)) count++;
+	if(col < board.size-1 && SlotIsEmpty(row,col+1)) count++;
+	return count;
 }
-
-b32 ChainHasLiberty(Chain* chain){
-	forI(chain->outer.count){
-		if(HasLiberty(chain->outer[i] / board.size, chain->outer[i] % board.size)){
-			return true;
-		}
-	}
-	return false;
+u32 LibertyCount(Chain* chain){
+	u32 count = 0;
+	forE(chain->outer){ count += LibertyCount(*it / board.size, *it % board.size); }
+	return count;
 }
 
 b32 IsValidPlacement(u32 row, u32 col){
+	//first, return true if placement will capture something
+	//then,  return false check if placement is suicidal (if suicide is not allowed)
 	u32 color = (black_turn) ? Slot_White : Slot_Black;
-	if      (row == 0){
-		if      (col == 0){            //LEFT TOP
-			if(SlotIsColor(row+1,col,color) && SlotIsColor(row,col+1,color)) return false;
-		}else if(col == board.size-1){ //LEFT BOT
-			if(SlotIsColor(row+1,col,color) && SlotIsColor(row,col-1,color)) return false;
-		}else{                         //LEFT EDGE
-			if(SlotIsColor(row+1,col,color) && SlotIsColor(row,col+1,color) && SlotIsColor(row,col-1,color)) return false;
+	if(row == 0){
+		if(col == 0){                  //TOP LEFT
+			if(   (SlotIsColor(row+1,col,color) && LibertyCount(row+1,col) == 1)
+			   || (SlotIsColor(row,col+1,color) && LibertyCount(row,col+1) == 1)) return true;
+			if(   suicide_is_illegal
+			   && SlotIsColor(row+1,col,color)
+			   && SlotIsColor(row,col+1,color)) return false;
+		}else if(col == board.size-1){ //TOP RIGHT
+			if(   (SlotIsColor(row+1,col,color) && LibertyCount(row+1,col) == 1)
+			   || (SlotIsColor(row,col-1,color) && LibertyCount(row,col-1) == 1)) return true;
+			if(   suicide_is_illegal
+			   && SlotIsColor(row+1,col,color)
+			   && SlotIsColor(row,col-1,color)) return false;
+		}else{                         //TOP EDGE
+			if(   (SlotIsColor(row+1,col,color) && LibertyCount(row+1,col) == 1)
+			   || (SlotIsColor(row,col+1,color) && LibertyCount(row,col+1) == 1)
+			   || (SlotIsColor(row,col+1,color) && LibertyCount(row,col+1) == 1)) return true;
+			if(   suicide_is_illegal
+			   && SlotIsColor(row+1,col,color)
+			   && SlotIsColor(row,col+1,color)
+			   && SlotIsColor(row,col-1,color)) return false;
 		}
 	}else if(row == board.size-1){
-		if      (col == 0){            //RIGHT TOP
-			if(SlotIsColor(row-1,col,color) && SlotIsColor(row,col+1,color)) return false;
-		}else if(col == board.size-1){ //RIGHT BOT
-			if(SlotIsColor(row-1,col,color) && SlotIsColor(row,col-1,color)) return false;
-		}else{                         //RIGHT EDGE
-			if(SlotIsColor(row-1,col,color) && SlotIsColor(row,col+1,color) && SlotIsColor(row,col-1,color)) return false;
+		if(col == 0){                  //BOT LEFT
+			if(   (SlotIsColor(row-1,col,color) && LibertyCount(row-1,col) == 1)
+			   || (SlotIsColor(row,col+1,color) && LibertyCount(row,col+1) == 1)) return true;
+			if(   suicide_is_illegal
+			   && SlotIsColor(row-1,col,color)
+			   && SlotIsColor(row,col+1,color)) return false;
+		}else if(col == board.size-1){ //BOT RIGHT
+			if(   (SlotIsColor(row-1,col,color) && LibertyCount(row-1,col) == 1)
+			   || (SlotIsColor(row,col-1,color) && LibertyCount(row,col-1) == 1)) return true;
+			if(   suicide_is_illegal
+			   && SlotIsColor(row-1,col,color)
+			   && SlotIsColor(row,col-1,color)) return false;
+		}else{                         //BOT EDGE
+			if(   (SlotIsColor(row-1,col,color) && LibertyCount(row-1,col) == 1)
+			   || (SlotIsColor(row,col+1,color) && LibertyCount(row,col+1) == 1)
+			   || (SlotIsColor(row,col-1,color) && LibertyCount(row,col-1) == 1)) return true;
+			if(   suicide_is_illegal
+			   && SlotIsColor(row-1,col,color)
+			   && SlotIsColor(row,col+1,color)
+			   && SlotIsColor(row,col-1,color)) return false;
 		}
 	}else{
-		if      (col == 0){            //TOP EDGE
-			if(SlotIsColor(row-1,col,color) && SlotIsColor(row+1,col,color) && SlotIsColor(row,col+1,color)) return false;
-		}else if(col == board.size-1){ //BOT EDGE
-			if(SlotIsColor(row-1,col,color) && SlotIsColor(row+1,col,color) && SlotIsColor(row,col-1,color)) return false;
+		if(col == 0){                  //LEFT EDGE
+			if(   (SlotIsColor(row-1,col,color) && LibertyCount(row-1,col) == 1)
+			   || (SlotIsColor(row+1,col,color) && LibertyCount(row+1,col) == 1)
+			   || (SlotIsColor(row,col+1,color) && LibertyCount(row,col+1) == 1)) return true;
+			if(   suicide_is_illegal
+			   && SlotIsColor(row-1,col,color)
+			   && SlotIsColor(row+1,col,color)
+			   && SlotIsColor(row,col+1,color)) return false;
+		}else if(col == board.size-1){ //RIGHT EDGE
+			if(   (SlotIsColor(row-1,col,color) && LibertyCount(row-1,col) == 1)
+			   || (SlotIsColor(row+1,col,color) && LibertyCount(row+1,col) == 1)
+			   || (SlotIsColor(row,col-1,color) && LibertyCount(row,col-1) == 1)) return true;
+			if(   suicide_is_illegal
+			   && SlotIsColor(row-1,col,color)
+			   && SlotIsColor(row+1,col,color)
+			   && SlotIsColor(row,col-1,color)) return false;
 		}else{                         //NON EDGE OR CORNER
-			if(SlotIsColor(row-1,col,color) && SlotIsColor(row+1,col,color) && SlotIsColor(row,col-1,color) && SlotIsColor(row,col+1,color)) return false;
+			if(   (SlotIsColor(row-1,col,color) && LibertyCount(row-1,col) == 1)
+			   || (SlotIsColor(row+1,col,color) && LibertyCount(row+1,col) == 1)
+			   || (SlotIsColor(row,col-1,color) && LibertyCount(row,col-1) == 1)
+			   || (SlotIsColor(row,col+1,color) && LibertyCount(row,col+1) == 1)) return true;
+			if(   suicide_is_illegal
+			   && SlotIsColor(row-1,col,color)
+			   && SlotIsColor(row+1,col,color)
+			   && SlotIsColor(row,col-1,color)
+			   && SlotIsColor(row,col+1,color)) return false;
 		}
 	}
 	return true;
@@ -185,7 +232,6 @@ int main(int argc, char* argv[]){ //NOTE argv includes the entire command line (
 					if(IsValidPlacement(row,col)){
 						if(DeshInput->KeyPressed(MouseButton::LEFT)){
 							Slot(row,col) = (black_turn) ? Slot_Black : Slot_White;
-							ToggleBool(black_turn);
 							piece_placed = true;
 						}
 					}else{
@@ -198,25 +244,7 @@ int main(int argc, char* argv[]){ //NOTE argv includes the entire command line (
 		}
 	}
 	
-#if 0 //draw hovered chain
-	if(hovered_row != -1 && hovered_col != -1){
-		array<u32> chain; 
-		FillChain(chain, hovered_row, hovered_col);
-		bubble_sort_low_to_high(chain);
-		if(chain.count > 1){
-			for(int i=1; i < chain.count; i++){
-				vec2 prev = board.pos+vec2{(chain[i-1]/board.size)*row_gap,(chain[i-1]%board.size)*row_gap};
-				vec2 curr = board.pos+vec2{(chain[i  ]/board.size)*row_gap,(chain[i  ]%board.size)*row_gap};
-				UI::Line(prev, curr, 5, Color_Red);
-			}
-		}
-	}
-#endif
-	
 	//if a piece is placed, check for captures
-	//NOTE chains arent valid into the next frame because captured ones are not removed
-	//TODO if above NOTE remains valid into the future, just make the arrays local and temp allocator
-	//     alternatively, make the chains valid between changes by removing captured ones
 	//TODO extract piece placement from drawing into here
 	if(piece_placed){
 		//clear chains
@@ -237,9 +265,10 @@ int main(int argc, char* argv[]){ //NOTE argv includes the entire command line (
 		u32 enemy = (black_turn) ? Slot_White : Slot_Black;
 		forI(chains.count){
 			if(SlotLinear(chains[i].outer[0]) != enemy) continue;
-			if(!ChainHasLiberty(&chains[i])){
+			if(LibertyCount(&chains[i]) == 0){
 				forE(chains[i].inner){ SlotLinear(*it) = Slot_Empty; }
 				forE(chains[i].outer){ SlotLinear(*it) = Slot_Empty; }
+				chains.remove(i--);
 			}
 		}
 		
@@ -247,13 +276,25 @@ int main(int argc, char* argv[]){ //NOTE argv includes the entire command line (
 		u32 friendly = (black_turn) ? Slot_Black : Slot_White;
 		forI(chains.count){
 			if(SlotLinear(chains[i].outer[0]) != friendly) continue;
-			if(!ChainHasLiberty(&chains[i])){
+			if(LibertyCount(&chains[i]) == 0){
 				forE(chains[i].inner){ SlotLinear(*it) = Slot_Empty; }
 				forE(chains[i].outer){ SlotLinear(*it) = Slot_Empty; }
+				chains.remove(i--);
 			}
 		}
+		
+		//swap turns
+		ToggleBool(black_turn);
 	}
 	
+#if 1 //draw chains
+	forI(chains.count){
+		UI::PushColor(UIStyleCol_Text, (SlotLinear(chains[i].outer[0]) == Slot_White) ? Color_Black : Color_White);
+		forE(chains[i].inner){ UI::Text(toStr(i).str, board.pos+vec2{(*it/board.size)*row_gap,(*it%board.size)*row_gap}); }
+		forE(chains[i].outer){ UI::Text(toStr(i).str, board.pos+vec2{(*it/board.size)*row_gap,(*it%board.size)*row_gap}); }
+		UI::PopColor();
+	}
+#endif
 	
 	UI::End();
 	deshi_loop_end();
