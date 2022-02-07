@@ -1,4 +1,3 @@
-//TODO passing turn
 //TODO game end
 //TODO komi = 6.5
 //TODO maybe superko?
@@ -34,6 +33,7 @@ b32 suicide_is_illegal = true;
 
 b32 black_turn = true;
 b32 turn_passed = false;
+b32 game_over = false;
 u32 whites_prev_placement = -1;
 u32 blacks_prev_placement = -1;
 u32 whites_prev_capture = -1; //value is -1 if more than one was captured
@@ -191,7 +191,22 @@ void PlacePiece(u32 row, u32 col){
 	}
 	
 	//swap turns
+	turn_passed = false;
 	ToggleBool(black_turn);
+}
+
+void EndGame(){
+	game_over = true;
+	//TODO end game and point collection
+}
+
+void PassTurn(){
+	if(turn_passed){
+		EndGame();
+	}else{
+		turn_passed = true;
+		ToggleBool(black_turn);
+	}
 }
 
 void AddGoCommands();
@@ -249,7 +264,7 @@ int main(int argc, char* argv[]){ //NOTE argv includes the entire command line (
 			}else if(SlotIsBlack(row,col)){
 				UI::CircleFilled(intersection, piece_radius, 16, Color_Black);
 				if(DeshInput->mousePos.distanceTo(board_pos+offset) <= piece_radius){ hovered_row = row; hovered_col = col; }
-			}else if(SlotIsEmpty(row,col)){
+			}else if(SlotIsEmpty(row,col) && !game_over){
 				if(DeshInput->mousePos.distanceTo(board_pos+offset) <= piece_radius){
 					UI::CircleFilled(intersection, piece_radius, 16, (black_turn) ? color(0,0,0,128) : color(255,255,255,128));
 					hovered_row = row; hovered_col = col;
@@ -275,6 +290,11 @@ int main(int argc, char* argv[]){ //NOTE argv includes the entire command line (
 		UI::PopColor();
 	}
 #endif
+	
+	//pass turn if button is pressed, end game if both players pass turn
+	UI::PushVar(UIStyleVar_FontHeight, row_gap/2);
+	if(UI::Button("Pass Turn", vec2::ZERO, UIButtonFlags_ReturnTrueOnRelease)) PassTurn();
+	UI::PopVar();
 	
 	//reset board if f5 pressed
 	if(DeshInput->KeyPressed(Key::F5)){
