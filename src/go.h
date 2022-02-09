@@ -1,9 +1,10 @@
 #pragma once
 #ifndef GO_H
 #define GO_H
+
 #include "deshi.h"
-#include "utils/array_utils.h"
-#include "utils/carray.h"
+#include "kigu/array_utils.h"
+#include "kigu/carray.h"
 
 enum{
 	Slot_Empty = 0,
